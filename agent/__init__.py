@@ -1,3 +1,3 @@
-"""LapPilot - remote laptop agent driven from Discord."""
+"""DOST Agent - remote Windows assistant controlled through Discord."""
 
 __version__ = "1.0.0"

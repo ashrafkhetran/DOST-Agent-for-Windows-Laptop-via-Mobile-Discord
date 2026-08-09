@@ -58,7 +58,7 @@ class Config:
     confirm_risky = os.getenv("CONFIRM_RISKY", "false").strip().lower() in ("true", "1", "yes")
 
     # ---- identity + voice ----
-    agent_name = os.getenv("AGENT_NAME", "Zara").strip() or "Zara"
+    agent_name = os.getenv("AGENT_NAME", "DOST").strip() or "DOST"
     # voice replies: auto (mirror the user), always, or never
     voice_replies = os.getenv("VOICE_REPLIES", "auto").strip().lower()
     # faster-whisper model: tiny / base / small / medium. bigger = better Urdu, slower.
