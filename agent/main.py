@@ -506,7 +506,7 @@ _INSTANCE_GUARD = None
 
 
 def _single_instance():
-    """Windows named mutex so only ONE Zara ever runs (two would fight over Discord)."""
+    """Windows named mutex so only ONE DOST ever runs (two would fight over Discord)."""
     global _INSTANCE_GUARD
     try:
         import ctypes
@@ -521,7 +521,7 @@ def _single_instance():
 
 def run():
     if not _single_instance():
-        print("\n  Zara is already running - this extra copy will exit.\n")
+        print("\n  DOST is already running - this extra copy will exit.\n")
         sys.exit(3)  # run.bat treats 3 as 'do not restart'
 
     problems = validate()

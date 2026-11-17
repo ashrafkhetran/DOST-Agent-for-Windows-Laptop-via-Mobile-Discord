@@ -60,16 +60,16 @@ for label, model, text in tests:
 print("\n  " + "-" * 60)
 if works.get("eleven_v3 + URDU"):
     print("  Best case: v3 works for BOTH Urdu and English, with emotions.")
-    print("  Nothing to change - Zara will use it automatically.")
+    print("  Nothing to change - DOST will use it automatically.")
 elif works.get("eleven_v3 + English + emotion"):
     print("  v3 works for English but not Urdu on this key.")
-    print("  Zara will use v3 for English and the free Microsoft voice for Urdu.")
+    print("  DOST will use v3 for English and the free Microsoft voice for Urdu.")
 elif works.get("eleven_multilingual_v2 + English"):
     print("  Your plan does not include v3, only multilingual_v2.")
     print("  v2 has NO Urdu and NO emotion tags - so v3 needs a paid plan ($6/mo Starter).")
     print("  Set ELEVENLABS_MODEL=eleven_multilingual_v2 in .env for better English,")
     print("  or leave everything as is and keep the free Microsoft voices.")
 else:
-    print("  No ElevenLabs model worked. Zara will keep using the free voices.")
+    print("  No ElevenLabs model worked. DOST will keep using the free voices.")
     print("  Check your credits above - you may have run out this month.")
 print()

@@ -1,4 +1,4 @@
-"""The `speak` tool - Zara's proper way to reply out loud."""
+"""The `speak` tool - DOST's proper way to reply out loud."""
 
 from . import tool
 from ..voice import synthesize_sync

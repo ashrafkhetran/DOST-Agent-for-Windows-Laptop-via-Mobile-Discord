@@ -1,4 +1,4 @@
-"""Show the ElevenLabs voices available on your account, so you can pick one for Zara.
+"""Show the ElevenLabs voices available on your account, so you can pick one for DOST.
 
 Run:  .venv\\Scripts\\python.exe list_voices.py
 """

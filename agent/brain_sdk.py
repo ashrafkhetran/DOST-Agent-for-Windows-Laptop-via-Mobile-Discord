@@ -1,4 +1,4 @@
-"""Subscription brain: runs Zara on your Claude Code login instead of a paid API key.
+"""Subscription brain: runs DOST on your Claude Code login instead of a paid API key.
 
 Uses the official Claude Agent SDK, which authenticates through the Claude Code CLI you're already
 signed into. Same models as the API (Opus etc.) - no quality loss - but billed to your Claude

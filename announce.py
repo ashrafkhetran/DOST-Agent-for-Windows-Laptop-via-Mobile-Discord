@@ -1,4 +1,4 @@
-"""Send a one-off message from Zara to the owner's Discord channel (REST, no gateway)."""
+"""Send a one-off message from DOST to the owner's Discord channel (REST, no gateway)."""
 
 import sys
 

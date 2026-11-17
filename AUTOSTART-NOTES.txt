@@ -1,4 +1,4 @@
-ZARA - SURVIVING A POWER CUT WHILE YOU ARE OUT
+DOST - SURVIVING A POWER CUT WHILE YOU ARE OUT
 ==============================================
 
 What is now automatic
@@ -10,7 +10,7 @@ What is now automatic
 3. If the internet is down she does NOT give up. She waits, checking every
    5 seconds, and connects the instant the line comes back.
 4. When she reconnects after being away a while, she messages you on Discord:
-   "Zara is back online (was offline about 2h 14m)".
+   "DOST is back online (was offline about 2h 14m)".
 
 So: router reboots, Wi-Fi drops, she crashes -> she comes back on her own.
 
@@ -62,7 +62,7 @@ Two more settings worth doing
 
 Checking it works
 -----------------
-  Task Scheduler (Win+R -> taskschd.msc) -> look for "Zara" and "Zara Watchdog"
+  Task Scheduler (Win+R -> taskschd.msc) -> look for "Zara" and "Zara Watchdog" (DOST's task names)
 
   Force a test:  open Task Manager, kill python.exe,
                  wait 3 minutes -> she should come back by herself
