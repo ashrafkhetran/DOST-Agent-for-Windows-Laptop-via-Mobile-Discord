@@ -71,14 +71,14 @@ Then send `/help` or `screenshot my screen` in your private Discord server.
 
 ## Optional configuration
 
-- `CONFIRM_RISKY=true` makes destructive actions require confirmation.
+- `CONFIRM_RISKY=true` (default) requires a button confirmation in Discord for destructive actions. Every tool call is logged to `.runtime/audit.jsonl`.
 - `GROQ_API_KEY` enables faster voice transcription.
 - `ELEVENLABS_API_KEY` enables more realistic voice output.
 - Run `INSTALL_AUTOSTART.bat` as Administrator for login startup and watchdog recovery.
 
 ## Security
 
-This software can control your computer. Use it only on a machine you own, keep the bot in a private server, restrict `DISCORD_ALLOWED_USER_IDS`, protect `.env`, and enable `CONFIRM_RISKY=true` unless you deliberately accept the additional risk.
+This software can control your computer. Use it only on a machine you own, keep the bot in a private server, restrict `DISCORD_ALLOWED_USER_IDS`, protect `.env`, and keep `CONFIRM_RISKY=true` unless you deliberately accept the additional risk.
 
 ## Attribution and license
 

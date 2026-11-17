@@ -5,6 +5,39 @@ import time
 from . import tool
 
 
+IMG = {"type": "boolean",
+       "description": "true = x/y are read straight off the LAST screenshot image (scaled/cropped); "
+                      "they are converted to real screen pixels for you. Recommended."}
+AFTER = {
+    "then_wait": {"type": "number", "description": "Seconds to wait after the action (max 30). "
+                                                    "Saves a separate wait call."},
+    "then_screenshot": {"type": "boolean", "description": "Take a screenshot after the action (and "
+                                                          "after then_wait) and return it. Saves a "
+                                                          "separate screenshot call."},
+}
+
+
+def _xy(x, y, image_coords):
+    if image_coords:
+        from .screen import to_screen
+        return to_screen(x, y)
+    return int(x), int(y)
+
+
+def _after(result, then_wait=None, then_screenshot=False):
+    """Optional follow-up so one tool call can do action + wait + look."""
+    if then_wait:
+        time.sleep(max(0.0, min(float(then_wait), 30.0)))
+    if then_screenshot:
+        from .screen import capture
+        shot = capture()
+        result["text"] = result["text"] + " " + shot["text"]
+        result["images"] = shot["images"]
+        result["captions"] = shot["captions"]
+        result["show"] = False
+    return result
+
+
 def _pyautogui():
     import pyautogui
 
@@ -26,10 +59,16 @@ def _pyautogui():
             "description": "Type character by character instead of pasting. Only for fields that "
                            "reject paste. Slow - avoid unless needed.",
         },
+        **AFTER,
     },
     required=["text"],
 )
-def type_text(text, press_enter=False, force_typing=False, interval=0.01):
+def type_text(text, press_enter=False, force_typing=False, interval=0.01, then_wait=None,
+              then_screenshot=False):
+    return _after(_type_text(text, press_enter, force_typing, interval), then_wait, then_screenshot)
+
+
+def _type_text(text, press_enter=False, force_typing=False, interval=0.01):
     try:
         pyautogui = _pyautogui()
     except Exception as exc:
@@ -78,10 +117,15 @@ def type_text(text, press_enter=False, force_typing=False, interval=0.01):
     {
         "keys": {"type": "string", "description": "Key or chord, e.g. ctrl+s"},
         "repeat": {"type": "integer", "description": "How many times. Default 1."},
+        **AFTER,
     },
     required=["keys"],
 )
-def press_keys(keys, repeat=1):
+def press_keys(keys, repeat=1, then_wait=None, then_screenshot=False):
+    return _after(_press_keys(keys, repeat), then_wait, then_screenshot)
+
+
+def _press_keys(keys, repeat=1):
     try:
         pyautogui = _pyautogui()
     except Exception as exc:
@@ -102,25 +146,31 @@ def press_keys(keys, repeat=1):
 
 @tool(
     "click",
-    "Click the mouse at an exact screen coordinate. Take a screenshot first and read the "
-    "pixel position off it - coordinates are in real screen pixels, and the screenshot you "
-    "were shown may have been scaled down, so use list_monitors to check the true resolution.",
+    "Click the mouse. Easiest: set image_coords=true and give x/y exactly as seen in the last "
+    "screenshot image - they are converted to real screen pixels for you (screenshots are "
+    "scaled down). Without it, x/y must be real screen pixels. Use then_wait/then_screenshot to "
+    "check the result in the same call.",
     {
-        "x": {"type": "integer", "description": "X in screen pixels."},
-        "y": {"type": "integer", "description": "Y in screen pixels."},
+        "x": {"type": "integer", "description": "X (screen pixels, or image pixels with image_coords)."},
+        "y": {"type": "integer", "description": "Y (screen pixels, or image pixels with image_coords)."},
         "button": {"type": "string", "enum": ["left", "right", "middle"], "description": "Default left."},
         "clicks": {"type": "integer", "description": "1 for single, 2 for double. Default 1."},
+        "image_coords": IMG,
+        **AFTER,
     },
     required=["x", "y"],
 )
-def click(x, y, button="left", clicks=1):
+def click(x, y, button="left", clicks=1, image_coords=False, then_wait=None, then_screenshot=False):
     try:
         pyautogui = _pyautogui()
     except Exception as exc:
         return {"text": f"pyautogui unavailable: {exc}"}
 
-    pyautogui.click(x=int(x), y=int(y), button=button or "left", clicks=int(clicks or 1), interval=0.1)
-    return {"text": f"{button or 'left'}-clicked {clicks or 1}x at ({x}, {y}). Screenshot to confirm."}
+    sx, sy = _xy(x, y, image_coords)
+    pyautogui.click(x=sx, y=sy, button=button or "left", clicks=int(clicks or 1), interval=0.1)
+    where = f"screen ({sx}, {sy})" + (f" from image ({x}, {y})" if image_coords else "")
+    return _after({"text": f"{button or 'left'}-clicked {clicks or 1}x at {where}."},
+                  then_wait, then_screenshot)
 
 
 @tool(
@@ -130,16 +180,18 @@ def click(x, y, button="left", clicks=1):
         "x": {"type": "integer"},
         "y": {"type": "integer"},
         "duration": {"type": "number", "description": "Seconds for the movement. Default 0.2."},
+        "image_coords": IMG,
     },
     required=["x", "y"],
 )
-def move_mouse(x, y, duration=0.2):
+def move_mouse(x, y, duration=0.2, image_coords=False):
     try:
         pyautogui = _pyautogui()
     except Exception as exc:
         return {"text": f"pyautogui unavailable: {exc}"}
 
-    pyautogui.moveTo(int(x), int(y), duration=float(duration or 0.2))
+    x, y = _xy(x, y, image_coords)
+    pyautogui.moveTo(x, y, duration=float(duration or 0.2))
     return {"text": f"Mouse moved to ({x}, {y})."}
 
 
@@ -150,19 +202,21 @@ def move_mouse(x, y, duration=0.2):
         "amount": {"type": "integer", "description": "Wheel clicks, e.g. -5 to scroll down."},
         "x": {"type": "integer", "description": "Optional: move here before scrolling."},
         "y": {"type": "integer", "description": "Optional: move here before scrolling."},
+        "image_coords": IMG,
+        **AFTER,
     },
     required=["amount"],
 )
-def scroll(amount, x=None, y=None):
+def scroll(amount, x=None, y=None, image_coords=False, then_wait=None, then_screenshot=False):
     try:
         pyautogui = _pyautogui()
     except Exception as exc:
         return {"text": f"pyautogui unavailable: {exc}"}
 
     if x is not None and y is not None:
-        pyautogui.moveTo(int(x), int(y))
+        pyautogui.moveTo(*_xy(x, y, image_coords))
     pyautogui.scroll(int(amount) * 120)
-    return {"text": f"Scrolled {amount} clicks."}
+    return _after({"text": f"Scrolled {amount} clicks."}, then_wait, then_screenshot)
 
 
 @tool(
@@ -174,17 +228,20 @@ def scroll(amount, x=None, y=None):
         "to_x": {"type": "integer"},
         "to_y": {"type": "integer"},
         "duration": {"type": "number", "description": "Seconds. Default 0.5."},
+        "image_coords": IMG,
     },
     required=["from_x", "from_y", "to_x", "to_y"],
 )
-def drag(from_x, from_y, to_x, to_y, duration=0.5):
+def drag(from_x, from_y, to_x, to_y, duration=0.5, image_coords=False):
     try:
         pyautogui = _pyautogui()
     except Exception as exc:
         return {"text": f"pyautogui unavailable: {exc}"}
 
-    pyautogui.moveTo(int(from_x), int(from_y))
-    pyautogui.dragTo(int(to_x), int(to_y), duration=float(duration or 0.5), button="left")
+    from_x, from_y = _xy(from_x, from_y, image_coords)
+    to_x, to_y = _xy(to_x, to_y, image_coords)
+    pyautogui.moveTo(from_x, from_y)
+    pyautogui.dragTo(to_x, to_y, duration=float(duration or 0.5), button="left")
     return {"text": f"Dragged ({from_x}, {from_y}) -> ({to_x}, {to_y})."}
 
 

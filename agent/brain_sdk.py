@@ -13,13 +13,17 @@ vision AND pushed to Discord, via a contextvar that carries the active channel i
 import asyncio
 import base64
 import contextvars
+import os
+import shutil
 import traceback
 from pathlib import Path
 
 import claude_agent_sdk as sdk
 
+from . import audit
 from .brain import SYSTEM_PROMPT
 from .config import CONFIG
+from .security import classify, describe
 from .tools import load_all
 
 SCHEMAS, HANDLERS = load_all()
@@ -61,6 +65,21 @@ def _build_tool(schema):
                 await chan.note(f"`{_name}`")
             except Exception:  # noqa: BLE001
                 pass
+
+        needs_confirm, reason = classify(_name, args)
+        if needs_confirm and CONFIG.confirm_risky:
+            approved = chan is not None and await chan.confirm(_name, reason, describe(_name, args))
+            if not approved:
+                audit.record(_name, args, "denied", reason)
+                return {
+                    "content": [{"type": "text", "text": "DENIED: the owner refused this action (or it "
+                                 "could not be confirmed). Do not retry it or attempt an equivalent "
+                                 "action another way. Ask them what to do instead."}],
+                    "isError": True,
+                }
+            audit.record(_name, args, "approved", reason)
+        else:
+            audit.record(_name, args, "allowed", reason)
 
         try:
             result = await asyncio.to_thread(_handler, **(args or {}))
@@ -108,18 +127,44 @@ _SERVER = sdk.create_sdk_mcp_server("laptop", "1.0.0", _TOOLS)
 _ALLOWED = [f"mcp__laptop__{schema['name']}" for schema in SCHEMAS]
 
 
+def _claude_exe():
+    """The SDK refuses npm's claude.cmd shim on Windows, so find a native claude.exe."""
+    env = os.getenv("CLAUDE_CLI_PATH", "").strip()
+    if env and Path(env).is_file():
+        return env
+    found = shutil.which("claude")
+    if found and found.lower().endswith(".exe"):
+        return found
+    if found:  # npm shim: the real binary sits inside the package
+        pkg = Path(found).parent / "node_modules" / "@anthropic-ai" / "claude-code"
+        for rel in ("bin/claude.exe", "node_modules/@anthropic-ai/claude-code-win32-x64/claude.exe"):
+            if (pkg / rel).is_file():
+                return str(pkg / rel)
+    return None
+
+
 def _options():
     kwargs = dict(
         system_prompt=SYSTEM_PROMPT,
         mcp_servers={"laptop": _SERVER},
-        allowed_tools=_ALLOWED,
+        allowed_tools=_ALLOWED + ["Skill"],
         permission_mode="bypassPermissions",
         max_turns=CONFIG.max_iterations,
-        # keep Zara on our tools, not Claude Code's own file/bash tools
-        setting_sources=[],
+        # "user" loads ~/.claude/skills (limo-prospect-pipeline, rnr-site-deploy-qa, audit-site...).
+        # It also reads ~/.claude/settings.json; its "model" key is overridden below by
+        # SUBSCRIPTION_MODEL. Set DOST_SETTING_SOURCES= (empty) to switch back to no skills.
+        setting_sources=[s for s in os.getenv("DOST_SETTING_SOURCES", "user").split(",") if s.strip()],
+        # SDK default is 1 MB per stream-json line. One image tool result is serialized twice
+        # (message.content + tool_use_result), so a ~550 KB screenshot produced a 1,113,371-byte
+        # line on 12 Oct and crashed the session. 8 MB leaves room; images are still kept small
+        # at the source (tools/screen.py, build/preview.py).
+        max_buffer_size=int(os.getenv("SDK_MAX_BUFFER_BYTES", str(8 * 1024 * 1024))),
     )
     if CONFIG.subscription_model:
         kwargs["model"] = CONFIG.subscription_model
+    exe = _claude_exe()
+    if exe:
+        kwargs["cli_path"] = exe
     return sdk.ClaudeAgentOptions(**kwargs)
 
 
@@ -209,6 +254,9 @@ class SdkBrain:
                         # die here with no message at all, hours into the work.
                         hit_limit = "max_turns" in subtype
                         if getattr(message, "is_error", False) and not hit_limit and not spoke:
+                            detail = str(getattr(message, "result", "") or "").lower()
+                            if "oauth" in detail or "authenticate" in detail:
+                                raise RuntimeError("Failed to authenticate: OAuth session expired")
                             await chan.send_text(
                                 "I hit an error and couldn't finish that one. Try `/new` and rephrase."
                             )
@@ -240,7 +288,18 @@ class SdkBrain:
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
             self.reset(key)
-            await chan.send_text(f"Agent error: `{type(exc).__name__}: {exc}`")
+            text = str(exc).lower()
+            if "oauth" in text or "authenticate" in text or "session expired" in text:
+                # Drop the stale pre-warmed session so the next message starts a fresh one.
+                spare, self._spare = self._spare, None
+                if spare is not None:
+                    await self._disconnect(spare)
+                await chan.send_text(
+                    "My Claude login expired. Run `claude /login` once in a terminal on the laptop, "
+                    "then send your message again (no restart needed)."
+                )
+            else:
+                await chan.send_text(f"Agent error: `{type(exc).__name__}: {exc}`")
         finally:
             self.busy.discard(key)
             _CHAN.reset(token)

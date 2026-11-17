@@ -6,6 +6,16 @@ from . import tool
 
 MAX_EDGE = 1568  # Anthropic's sweet spot for vision input
 
+# How the LAST screenshot maps to real screen pixels: screen = image * scale + offset.
+# Lets click/move/drag/scroll take coordinates read straight off the image (image_coords=true).
+LAST_MAP = {"scale": 1.0, "left": 0, "top": 0}
+
+
+def to_screen(x, y):
+    """Convert coordinates read off the last screenshot into real screen pixels."""
+    s = LAST_MAP["scale"]
+    return int(round(float(x) * s + LAST_MAP["left"])), int(round(float(y) * s + LAST_MAP["top"]))
+
 
 def _save(pil_image, prefix="shot"):
     from PIL import Image
@@ -57,6 +67,10 @@ def _prune(keep=60):
     },
 )
 def screenshot(monitor=0, region=None, note=None, show=False):
+    return capture(monitor, region, note, show)
+
+
+def capture(monitor=0, region=None, note=None, show=False):
     import mss
     from PIL import Image
 
@@ -72,8 +86,18 @@ def screenshot(monitor=0, region=None, note=None, show=False):
 
     img = Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX")
     path = _save(img)
+    w, h = raw.size
+    scale = max(w, h) / MAX_EDGE if max(w, h) > MAX_EDGE else 1.0
+    LAST_MAP.update(scale=scale, left=int(box["left"]), top=int(box["top"]))
+    iw, ih = int(w / scale), int(h / scale)
+    if scale == 1.0 and not box["left"] and not box["top"]:
+        how = "Image pixels = screen pixels."
+    else:
+        how = (f"Image is {iw}x{ih}: screen = image x {scale:.4f} + ({box['left']}, {box['top']}). "
+               "Easiest: pass image_coords=true to click/move_mouse/drag/scroll and use the "
+               "coordinates exactly as you see them in this image.")
     return {
-        "text": f"Screen captured ({raw.size[0]}x{raw.size[1]}). Look at the image below."
+        "text": f"Screen area {w}x{h} at ({box['left']}, {box['top']}). {how}"
                 + ("" if show else " (not sent to the user)"),
         "images": [path],
         "captions": [note or ""],

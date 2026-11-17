@@ -1,13 +1,15 @@
 """Discord front end: you type from your phone, the laptop does the work."""
 
 import asyncio
+import json
+import os
 import sys
 import time
 from pathlib import Path
 
 import discord
 
-from . import netrecover, voice
+from . import audit, netrecover, voice
 from .config import CONFIG, effective_brain, validate
 
 
@@ -38,7 +40,10 @@ I understand English and Urdu, and I'll reply by voice when you talk to me by vo
 `/new` - forget this conversation and start fresh
 `/stop` - cancel whatever I'm doing right now
 `/shot` - instant screenshot, no thinking
-`/status` - instant system health
+`/status` or `/health` - instant system health
+`/processes` - top processes by memory
+`/audit` - the last 10 actions I took
+`/panic` - emergency: cancel everything and shut this agent down
 `/voice on` / `/voice off` / `/voice auto` - control voice replies
 `/help` - this message"""
 
@@ -444,12 +449,40 @@ class LapPilot(discord.Client):
                 await chan.send_file(path)
             return True
 
-        if command == "/status":
+        if command in ("/status", "/health"):
             from .tools.system import system_status
 
             result = await asyncio.to_thread(system_status)
             await chan.send_text(f"```\n{result['text']}\n```")
             return True
+
+        if command == "/processes":
+            from .tools.system import list_processes
+
+            result = await asyncio.to_thread(list_processes)
+            await chan.send_text("```\n" + result["text"][:1800] + "\n```")
+            return True
+
+        if command == "/audit":
+            path = CONFIG.runtime_dir / "audit.jsonl"
+            try:
+                rows = path.read_text(encoding="utf-8").splitlines()[-10:]
+            except OSError:
+                rows = []
+            lines = []
+            for row in rows:
+                item = json.loads(row)
+                lines.append(f"{item['time']} {item['outcome']:<8} {item['tool']} {item['args'][:60]}")
+            await chan.send_text("```\n" + ("\n".join(lines) or "No actions logged yet.") + "\n```")
+            return True
+
+        if command == "/panic":
+            for job in list(self.jobs.values()):
+                if not job.done():
+                    job.cancel()
+            await chan.send_text("PANIC: cancelled all work and shutting DOST down. Restart it from the laptop.")
+            audit.record("panic", {}, "shutdown", str(message.author.id))
+            os._exit(3)  # exit code 3 = run.bat does not restart
 
         return False
 

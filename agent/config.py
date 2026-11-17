@@ -55,7 +55,7 @@ class Config:
     show_tool_calls = os.getenv("SHOW_TOOL_CALLS", "false").strip().lower() in ("true", "1", "yes")
     shell_timeout = _int("SHELL_TIMEOUT", 180)
     history_turns = _int("HISTORY_TURNS", 30)
-    confirm_risky = os.getenv("CONFIRM_RISKY", "false").strip().lower() in ("true", "1", "yes")
+    confirm_risky = os.getenv("CONFIRM_RISKY", "true").strip().lower() in ("true", "1", "yes")
 
     # ---- identity + voice ----
     agent_name = os.getenv("AGENT_NAME", "DOST").strip() or "DOST"
