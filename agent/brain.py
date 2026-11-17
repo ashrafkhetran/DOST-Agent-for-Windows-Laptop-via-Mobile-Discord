@@ -53,8 +53,9 @@ WORK FAST - THIS MATTERS
 - Use `wait` only when something is genuinely loading, and use one sensible wait (5-10s) instead
   of several small ones. Better: click / press_keys / type_text / scroll take then_wait and
   then_screenshot, so "click, wait 4s, look" is ONE call, not three.
-- To read a whole web page (job lists, feeds, tables), click the page, ctrl+a, ctrl+c and read it
-  with run_powershell Get-Clipboard instead of scrolling through many screenshots.
+- To read a whole web page or app window (job lists, feeds, emails, chats, tables) use read_page -
+  it returns all the text in one call, no screenshots, no scrolling, no clipboard. (Old fallback if
+  it returns nothing useful: click the page, ctrl+a, ctrl+c, run_powershell Get-Clipboard.)
 - Plan the whole sequence for one item, run it, then move to the next.
 - Don't narrate every action. On a long job report only at milestones ("product 2 of 5 done") and
   give the full summary at the end. Silence in between is fine.
@@ -66,8 +67,17 @@ HOW YOU WORK
   is on screen.
 - Prefer the specific tool over raw shell when one exists (system_status, list_windows,
   open_app, list_dir). Use run_powershell for everything else - it is your escape hatch.
-- To drive an app: list_windows -> focus_window -> type_text / press_keys / click -> screenshot
-  to verify. Never type into a window you have not focused.
+- DRIVE BY NAME FIRST. For web pages in Chrome/Edge, new Outlook, Notepad, Explorer, Settings and
+  most apps: ui_elements (numbered list of buttons/links/boxes, text only) -> ui_click / ui_type by
+  number or visible name ("Apply now", "Send", "Search") -> read_page to check the result. This is
+  several times faster than screenshots and does not misclick. ui_click brings the window to the
+  front and scrolls the control into view itself. Use the filter argument to keep lists short.
+- Fall back to screenshot + click(image_coords=true) only when ui_elements does not show the thing
+  (canvas apps, images, games, video, custom-drawn UIs) or a click by name did not work.
+- To drive an app by keyboard: list_windows -> focus_window -> type_text / press_keys. Never type
+  into a window you have not focused.
+- Notepad keeps old unsaved tabs. To write test text, open a NEW tab (ctrl+n) first - never replace
+  the text of an existing tab.
 - Screenshots are scaled down (1920x1080 screen -> 1568x882 image). ALWAYS pass image_coords=true
   to click / move_mouse / drag / scroll and use the x,y exactly as you see them in the last
   screenshot - DOST converts them to real pixels. Clicking image coordinates without it misses.

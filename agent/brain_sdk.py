@@ -21,6 +21,7 @@ from pathlib import Path
 import claude_agent_sdk as sdk
 
 from . import audit
+from . import fallback
 from .brain import SYSTEM_PROMPT
 from .config import CONFIG
 from .security import classify, describe
@@ -175,6 +176,7 @@ class SdkBrain:
         self.clients = {}   # channel id -> connected ClaudeSDKClient (keeps conversation memory)
         self.busy = set()
         self._spare = None  # pre-connected client, so the first message doesn't pay startup cost
+        self.recent = {}    # channel id -> last few (who, text) lines, handed to the backup brain
 
     async def prewarm(self):
         """Connect a session in advance. First reply drops from ~17s to ~3s."""
@@ -223,6 +225,20 @@ class SdkBrain:
             self.clients[key] = client
         return client
 
+    async def _backup(self, key, user_text, chan, kind, detail):
+        """Claude is unavailable: explain once, then let ChatGPT (Codex CLI) try the job."""
+        alert = await asyncio.to_thread(fallback.alert_text, kind, detail)
+        if alert:
+            await chan.send_text(alert)
+        if not fallback.ENABLED or not await asyncio.to_thread(fallback.codex_ready):
+            if not alert:
+                await chan.send_text("Claude is still unavailable and the backup is off - try again later.")
+            return
+        recent = self.recent.get(key, [])
+        answer = await fallback.run_codex(user_text, recent[:-1])
+        recent.append(("DOST (backup)", answer))
+        await chan.send_text(answer + "\n-# via ChatGPT backup")
+
     async def handle(self, key, user_text, chan):
         if key in self.busy:
             await chan.send_text("I'm still working on the previous instruction. Send `/stop` to cancel it.")
@@ -232,6 +248,15 @@ class SdkBrain:
         self.busy.add(key)
         token = _CHAN.set(chan)
         _ACTIVE = chan          # authoritative: survives the SDK's context snapshot
+        recent = self.recent.setdefault(key, [])
+        recent.append(("Owner", user_text))
+        del recent[:-8]
+        try:
+            warning = await asyncio.to_thread(fallback.login_warning)
+            if warning:
+                await chan.send_text(warning)
+        except Exception:  # noqa: BLE001
+            pass
         try:
             client = await self._client(key)
             prompt = user_text
@@ -247,6 +272,7 @@ class SdkBrain:
                         for block in message.content:
                             if isinstance(block, sdk.TextBlock) and block.text.strip():
                                 spoke = True
+                                recent.append(("DOST", block.text))
                                 await chan.send_text(block.text)
                     elif isinstance(message, sdk.ResultMessage):
                         subtype = str(getattr(message, "subtype", "") or "")
@@ -254,9 +280,12 @@ class SdkBrain:
                         # die here with no message at all, hours into the work.
                         hit_limit = "max_turns" in subtype
                         if getattr(message, "is_error", False) and not hit_limit and not spoke:
-                            detail = str(getattr(message, "result", "") or "").lower()
-                            if "oauth" in detail or "authenticate" in detail:
-                                raise RuntimeError("Failed to authenticate: OAuth session expired")
+                            detail = str(getattr(message, "result", "") or "")
+                            kind = fallback.kind_of(detail)
+                            if kind == "auth":
+                                raise RuntimeError(f"Failed to authenticate: OAuth session expired ({detail[:200]})")
+                            if kind == "quota":
+                                raise RuntimeError(f"Claude usage limit / overloaded: {detail[:200]}")
                             await chan.send_text(
                                 "I hit an error and couldn't finish that one. Try `/new` and rephrase."
                             )
@@ -288,16 +317,13 @@ class SdkBrain:
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
             self.reset(key)
-            text = str(exc).lower()
-            if "oauth" in text or "authenticate" in text or "session expired" in text:
+            kind = fallback.kind_of(str(exc))
+            if kind:
                 # Drop the stale pre-warmed session so the next message starts a fresh one.
                 spare, self._spare = self._spare, None
                 if spare is not None:
                     await self._disconnect(spare)
-                await chan.send_text(
-                    "My Claude login expired. Run `claude /login` once in a terminal on the laptop, "
-                    "then send your message again (no restart needed)."
-                )
+                await self._backup(key, user_text, chan, kind, str(exc))
             else:
                 await chan.send_text(f"Agent error: `{type(exc).__name__}: {exc}`")
         finally:

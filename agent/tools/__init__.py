@@ -31,7 +31,7 @@ def tool(name, description, properties, required=()):
 
 def load_all():
     from . import (  # noqa: F401
-        apps, files, messaging, network, screen, shell, system, uinput, voice_tool,
+        apps, files, messaging, network, screen, shell, system, uia, uinput, voice_tool,
     )
 
     return SCHEMAS, HANDLERS
